@@ -1,160 +1,96 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Food Order Receipt</title>
-
-<!-- Epson ePOS Print SDK -->
-<script src="https://epson.github.io/ePOS-Print-SDK/epos-print.js"></script>
-
-<style>
-body {
-  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
-  display: flex;
-  justify-content: center;
-  background: #f7f7f7;
-  padding: 20px;
-}
-.receipt {
-  width: 80mm;
-  background: #fff;
-  padding: 16px;
-  border-radius: 6px;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-}
-h1 {
-  text-align: center;
-  font-size: 18px;
-  margin-bottom: 8px;
-}
-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 14px;
-}
-th, td {
-  padding: 4px;
-}
-th {
-  border-bottom: 1px dashed #ccc;
-  text-align: left;
-  font-size: 12px;
-}
-.price {
-  text-align: right;
-}
-.totals {
-  border-top: 1px solid #ccc;
-  margin-top: 10px;
-  padding-top: 6px;
-  font-weight: 600;
-}
-button {
-  width: 100%;
-  margin-top: 12px;
-  padding: 10px;
-  border: none;
-  border-radius: 6px;
-  background: #1f8ef1;
-  color: #fff;
-  font-size: 16px;
-  cursor: pointer;
-}
-#status {
-  margin-top: 10px;
-  font-size: 13px;
-  text-align: center;
-}
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>POS Firebase Print Test</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f7f7f7;
+      padding: 40px;
+      text-align: center;
+    }
+    h1 {
+      color: #333;
+    }
+    button {
+      padding: 12px 24px;
+      font-size: 16px;
+      background-color: #007bff;
+      color: #fff;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #0056b3;
+    }
+    .status {
+      margin-top: 20px;
+      font-size: 15px;
+      color: #555;
+    }
+  </style>
 </head>
 <body>
-<div class="receipt">
-  <h1>My Restaurant</h1>
-  <div>Order #: <strong id="orderNumber"></strong></div>
-  <div>Date: <strong id="orderDate"></strong></div>
+  <h1>🍔 Firebase POS Order Test</h1>
+  <p>This page will send a sample order to Firebase Firestore.<br>
+  Your Cloud Function will automatically print the receipt on your Epson TM-m30III printer.</p>
+  
+  <button onclick="sendTestOrder()">Send Test Order</button>
+  <div id="status" class="status">Waiting for action...</div>
 
-  <table>
-    <thead>
-      <tr><th>Item</th><th>Qty</th><th class="price">Price</th></tr>
-    </thead>
-    <tbody id="itemsBody"></tbody>
-  </table>
+  <script type="module">
+    // Import Firebase (Modular SDK)
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+    import { getFirestore, collection, addDoc } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
-  <div class="totals">
-    <div>Subtotal: <span id="subtotal" class="price">0.00 €</span></div>
-    <div>Tax (10%): <span id="tax" class="price">0.00 €</span></div>
-    <div>Total: <span id="total" class="price">0.00 €</span></div>
-  </div>
+    // ✅ Your Firebase Configuration
+    const firebaseConfig = {
+      apiKey: "AIzaSyCirYQ_46JiSkMIwCNs1nSi89dvB1MUg_A",
+      authDomain: "deliverylog12.firebaseapp.com",
+      databaseURL: "https://deliverylog12-default-rtdb.europe-west1.firebasedatabase.app",
+      projectId: "deliverylog12",
+      storageBucket: "deliverylog12.firebasestorage.app",
+      messagingSenderId: "19081371357",
+      appId: "1:19081371357:web:b9b59e732a4d90d4d44534",
+      measurementId: "G-FSZXXZQSL0"
+    };
 
-  <button id="printBtn">Print to Epson</button>
-  <div id="status"></div>
-</div>
+    // Initialize Firebase
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
 
-<script>
-(function(){
-  const items = [
-    { name: 'Cheeseburger', price: 7.50, qty: 2 },
-    { name: 'Fries', price: 3.00, qty: 1 },
-    { name: 'Cola (0.33l)', price: 2.30, qty: 3 }
-  ];
-  const TAX_RATE = 0.10;
-  const printerIP = "192.168.0.111"; // 👈 Replace with your printer's IP address
+    // 🧾 Send Test Order Function
+    async function sendTestOrder() {
+      const statusEl = document.getElementById("status");
+      statusEl.textContent = "⏳ Sending test order...";
 
-  function fmt(v){ return v.toFixed(2) + ' €'; }
-  function pad(n){ return String(n).padStart(2,'0'); }
+      const orderData = {
+        table: "Table 7",
+        items: [
+          { name: "Burger", qty: 2, price: 5 },
+          { name: "Coke", qty: 1, price: 2 },
+          { name: "Fries", qty: 1, price: 3 }
+        ],
+        total: 15,
+        status: "pending",
+        createdAt: new Date().toISOString()
+      };
 
-  document.getElementById('orderNumber').textContent = 'R' + Date.now().toString().slice(-6);
-  const d = new Date();
-  document.getElementById('orderDate').textContent =
-    `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-
-  // Render items
-  let subtotal = 0;
-  const tbody = document.getElementById('itemsBody');
-  items.forEach(it => {
-    subtotal += it.price * it.qty;
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${it.name}</td><td>${it.qty}</td><td class="price">${fmt(it.price*it.qty)}</td>`;
-    tbody.appendChild(tr);
-  });
-
-  const tax = subtotal * TAX_RATE;
-  const total = subtotal + tax;
-  document.getElementById('subtotal').textContent = fmt(subtotal);
-  document.getElementById('tax').textContent = fmt(tax);
-  document.getElementById('total').textContent = fmt(total);
-
-  // Epson ePOS print
-  async function printToEpson() {
-    const status = document.getElementById('status');
-    status.textContent = "Connecting to printer...";
-    try {
-      const printer = new epson.ePOSPrint(printerIP);
-      const data = `
-        <text align="center"><b>My Restaurant</b></text><br/>
-        Order #: ${document.getElementById('orderNumber').textContent}<br/>
-        Date: ${document.getElementById('orderDate').textContent}<br/>
-        ------------------------------<br/>
-        ${items.map(it => `${it.name} x${it.qty}  ${(it.price*it.qty).toFixed(2)} €`).join('<br/>')}
-        <br/>------------------------------<br/>
-        Subtotal: ${fmt(subtotal)}<br/>
-        Tax: ${fmt(tax)}<br/>
-        <b>Total: ${fmt(total)}</b><br/><br/>
-        Thank you!<br/>
-        <cut />
-      `;
-      printer.send(data, {
-        success: function(){ status.textContent = "✅ Printed successfully!"; },
-        error: function(err){ status.textContent = "❌ Print failed: "+err; }
-      });
-    } catch (err) {
-      status.textContent = "❌ Error: "+err.message;
+      try {
+        const docRef = await addDoc(collection(db, "orders"), orderData);
+        console.log("Order saved with ID:", docRef.id);
+        statusEl.textContent = `✅ Order sent successfully! ID: ${docRef.id}`;
+      } catch (error) {
+        console.error("Error sending order:", error);
+        statusEl.textContent = "❌ Error: " + error.message;
+      }
     }
-  }
 
-  document.getElementById('printBtn').addEventListener('click', printToEpson);
-})();
-</script>
+    // Make available globally for button
+    window.sendTestOrder = sendTestOrder;
+  </script>
 </body>
 </html>

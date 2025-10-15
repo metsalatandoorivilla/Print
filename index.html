@@ -3,53 +3,25 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>POS Order + Print Test</title>
+<title>POS Print Test</title>
 <style>
-  body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f4; }
-  h1 { text-align: center; }
-  table { width: 100%; max-width: 400px; margin: 20px auto; border-collapse: collapse; background: #fff; }
-  th, td { padding: 10px; border-bottom: 1px solid #ddd; text-align: left; }
-  th { background-color: #eee; }
-  button { padding: 10px 20px; margin: 10px; cursor: pointer; border: none; border-radius: 5px; background: #28a745; color: white; }
+  body { font-family: Arial, sans-serif; text-align: center; padding: 50px; background: #f4f4f4; }
+  button { padding: 15px 30px; font-size: 18px; cursor: pointer; border: none; border-radius: 6px; background: #28a745; color: #fff; }
   button:hover { background: #218838; }
-  #status { text-align: center; margin-top: 15px; color: #555; }
+  #status { margin-top: 20px; font-size: 16px; color: #333; }
 </style>
 </head>
 <body>
 
-<h1>POS Order Test</h1>
-
-<table id="orderTable">
-  <thead>
-    <tr>
-      <th>Item</th>
-      <th>Qty</th>
-      <th>Price</th>
-    </tr>
-  </thead>
-  <tbody id="orderBody"></tbody>
-  <tfoot>
-    <tr>
-      <th>Total</th>
-      <th></th>
-      <th id="totalPrice">$0</th>
-    </tr>
-  </tfoot>
-</table>
-
-<div style="text-align:center;">
-  <button onclick="sendOrder()">Send Order</button>
-  <button onclick="printOrder()">Print Order</button>
-</div>
-
+<h1>POS Order Print Test</h1>
+<button onclick="sendAndPrint()">Send Order & Print</button>
 <div id="status">Waiting...</div>
 
 <script type="module">
-  // Firebase SDK
   import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
   import { getFirestore, collection, addDoc } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
-  // 🔧 Your Firebase config
+  // 🔧 Firebase Config
   const firebaseConfig = {
     apiKey: "AIzaSyCirYQ_46JiSkMIwCNs1nSi89dvB1MUg_A",
     authDomain: "deliverylog12.firebaseapp.com",
@@ -64,33 +36,22 @@
   const app = initializeApp(firebaseConfig);
   const db = getFirestore(app);
 
-  // Sample order
+  // Sample order (80mm receipt width compatible)
   const orderItems = [
     { name: "Burger", qty: 2, price: 5 },
     { name: "Coke", qty: 1, price: 2 },
     { name: "Fries", qty: 1, price: 3 }
   ];
 
-  // Show order in table
-  const orderBody = document.getElementById("orderBody");
-  const totalPriceEl = document.getElementById("totalPrice");
-  let totalPrice = 0;
-
-  orderItems.forEach(item => {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${item.name}</td><td>${item.qty}</td><td>$${item.qty * item.price}</td>`;
-    orderBody.appendChild(tr);
-    totalPrice += item.qty * item.price;
-  });
-
-  totalPriceEl.textContent = `$${totalPrice}`;
+  const totalPrice = orderItems.reduce((sum, item) => sum + item.qty * item.price, 0);
 
   const statusEl = document.getElementById("status");
 
-  // Send order to Firebase
-  async function sendOrder() {
-    statusEl.textContent = "Sending order...";
+  async function sendAndPrint() {
+    statusEl.textContent = "⏳ Sending order to Firebase...";
+    
     try {
+      // 1️⃣ Send order to Firestore
       const docRef = await addDoc(collection(db, "orders"), {
         table: "Test Table",
         items: orderItems,
@@ -101,45 +62,54 @@
       statusEl.textContent = `✅ Order sent! ID: ${docRef.id}`;
     } catch (err) {
       console.error(err);
-      statusEl.textContent = "❌ Error sending order";
+      statusEl.textContent = "❌ Error sending order: " + err.message;
+      return;
     }
-  }
 
-  // Print order (using Epson ePOS SDK on desktop / LAN)
-  function printOrder() {
-    const printerIp = "192.168.0.111"; // Change to your printer IP
+    // 2️⃣ Print to Epson (only works on desktop/laptop with same LAN)
+    const printerIp = "192.168.0.111"; // your printer IP
     const ePosDev = new epson.ePOSDevice();
+
+    statusEl.textContent += " | Connecting to printer...";
 
     ePosDev.connect(printerIp, 8008, function(res) {
       if (res === "OK" || res === "SSL_CONNECT_OK") {
-        ePosDev.createDevice('local_printer', ePosDev.DEVICE_TYPE_PRINTER, { crypto:false, buffer:false }, function(printerObj, code){
-          if(!printerObj){
-            alert("Printer connection failed: " + code);
+        statusEl.textContent += " ✅ Printer connected";
+
+        ePosDev.createDevice('local_printer', ePosDev.DEVICE_TYPE_PRINTER, {crypto:false, buffer:false}, function(printerObj, code){
+          if (!printerObj) {
+            statusEl.textContent += " ❌ Printer object failed: " + code;
             return;
           }
 
           const printer = printerObj;
           printer.addTextAlign(printer.ALIGN_CENTER);
-          printer.addText("*** ORDER RECEIPT ***\n\n");
+          printer.addText("*** ORDER RECEIPT ***\n");
+          printer.addFeedLine(1);
           printer.addTextAlign(printer.ALIGN_LEFT);
 
           orderItems.forEach(item => {
-            printer.addText(`${item.name} x${item.qty}  $${item.qty * item.price}\n`);
+            let line = `${item.name.padEnd(12,' ')} x${item.qty}  $${item.qty*item.price}`;
+            printer.addText(line + "\n");
           });
 
-          printer.addText("--------------------\n");
+          printer.addText("------------------------\n");
           printer.addTextAlign(printer.ALIGN_RIGHT);
           printer.addText(`TOTAL: $${totalPrice}\n`);
-          printer.addFeedLine(2);
+          printer.addFeedLine(3);
           printer.addCut(printer.CUT_FEED);
           printer.send();
-          statusEl.textContent = "🖨️ Print job sent!";
+
+          statusEl.textContent += " 🖨️ Print job sent!";
         });
+
       } else {
-        alert("Connection failed: " + res);
+        statusEl.textContent += " ❌ Printer connection failed: " + res;
       }
     });
   }
+
+  window.sendAndPrint = sendAndPrint;
 </script>
 
 <!-- Epson ePOS SDK -->

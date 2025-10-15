@@ -1,96 +1,148 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>POS Firebase Print Test</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #f7f7f7;
-      padding: 40px;
-      text-align: center;
-    }
-    h1 {
-      color: #333;
-    }
-    button {
-      padding: 12px 24px;
-      font-size: 16px;
-      background-color: #007bff;
-      color: #fff;
-      border: none;
-      border-radius: 5px;
-      cursor: pointer;
-    }
-    button:hover {
-      background-color: #0056b3;
-    }
-    .status {
-      margin-top: 20px;
-      font-size: 15px;
-      color: #555;
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>POS Order + Print Test</title>
+<style>
+  body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f4; }
+  h1 { text-align: center; }
+  table { width: 100%; max-width: 400px; margin: 20px auto; border-collapse: collapse; background: #fff; }
+  th, td { padding: 10px; border-bottom: 1px solid #ddd; text-align: left; }
+  th { background-color: #eee; }
+  button { padding: 10px 20px; margin: 10px; cursor: pointer; border: none; border-radius: 5px; background: #28a745; color: white; }
+  button:hover { background: #218838; }
+  #status { text-align: center; margin-top: 15px; color: #555; }
+</style>
 </head>
 <body>
-  <h1>🍔 Firebase POS Order Test</h1>
-  <p>This page will send a sample order to Firebase Firestore.<br>
-  Your Cloud Function will automatically print the receipt on your Epson TM-m30III printer.</p>
-  
-  <button onclick="sendTestOrder()">Send Test Order</button>
-  <div id="status" class="status">Waiting for action...</div>
 
-  <script type="module">
-    // Import Firebase (Modular SDK)
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
-    import { getFirestore, collection, addDoc } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+<h1>POS Order Test</h1>
 
-    // ✅ Your Firebase Configuration
-    const firebaseConfig = {
-      apiKey: "AIzaSyCirYQ_46JiSkMIwCNs1nSi89dvB1MUg_A",
-      authDomain: "deliverylog12.firebaseapp.com",
-      databaseURL: "https://deliverylog12-default-rtdb.europe-west1.firebasedatabase.app",
-      projectId: "deliverylog12",
-      storageBucket: "deliverylog12.firebasestorage.app",
-      messagingSenderId: "19081371357",
-      appId: "1:19081371357:web:b9b59e732a4d90d4d44534",
-      measurementId: "G-FSZXXZQSL0"
-    };
+<table id="orderTable">
+  <thead>
+    <tr>
+      <th>Item</th>
+      <th>Qty</th>
+      <th>Price</th>
+    </tr>
+  </thead>
+  <tbody id="orderBody"></tbody>
+  <tfoot>
+    <tr>
+      <th>Total</th>
+      <th></th>
+      <th id="totalPrice">$0</th>
+    </tr>
+  </tfoot>
+</table>
 
-    // Initialize Firebase
-    const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
+<div style="text-align:center;">
+  <button onclick="sendOrder()">Send Order</button>
+  <button onclick="printOrder()">Print Order</button>
+</div>
 
-    // 🧾 Send Test Order Function
-    async function sendTestOrder() {
-      const statusEl = document.getElementById("status");
-      statusEl.textContent = "⏳ Sending test order...";
+<div id="status">Waiting...</div>
 
-      const orderData = {
-        table: "Table 7",
-        items: [
-          { name: "Burger", qty: 2, price: 5 },
-          { name: "Coke", qty: 1, price: 2 },
-          { name: "Fries", qty: 1, price: 3 }
-        ],
-        total: 15,
+<script type="module">
+  // Firebase SDK
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+  import { getFirestore, collection, addDoc } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+
+  // 🔧 Your Firebase config
+  const firebaseConfig = {
+    apiKey: "AIzaSyCirYQ_46JiSkMIwCNs1nSi89dvB1MUg_A",
+    authDomain: "deliverylog12.firebaseapp.com",
+    databaseURL: "https://deliverylog12-default-rtdb.europe-west1.firebasedatabase.app",
+    projectId: "deliverylog12",
+    storageBucket: "deliverylog12.firebasestorage.app",
+    messagingSenderId: "19081371357",
+    appId: "1:19081371357:web:b9b59e732a4d90d4d44534",
+    measurementId: "G-FSZXXZQSL0"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getFirestore(app);
+
+  // Sample order
+  const orderItems = [
+    { name: "Burger", qty: 2, price: 5 },
+    { name: "Coke", qty: 1, price: 2 },
+    { name: "Fries", qty: 1, price: 3 }
+  ];
+
+  // Show order in table
+  const orderBody = document.getElementById("orderBody");
+  const totalPriceEl = document.getElementById("totalPrice");
+  let totalPrice = 0;
+
+  orderItems.forEach(item => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${item.name}</td><td>${item.qty}</td><td>$${item.qty * item.price}</td>`;
+    orderBody.appendChild(tr);
+    totalPrice += item.qty * item.price;
+  });
+
+  totalPriceEl.textContent = `$${totalPrice}`;
+
+  const statusEl = document.getElementById("status");
+
+  // Send order to Firebase
+  async function sendOrder() {
+    statusEl.textContent = "Sending order...";
+    try {
+      const docRef = await addDoc(collection(db, "orders"), {
+        table: "Test Table",
+        items: orderItems,
+        total: totalPrice,
         status: "pending",
         createdAt: new Date().toISOString()
-      };
-
-      try {
-        const docRef = await addDoc(collection(db, "orders"), orderData);
-        console.log("Order saved with ID:", docRef.id);
-        statusEl.textContent = `✅ Order sent successfully! ID: ${docRef.id}`;
-      } catch (error) {
-        console.error("Error sending order:", error);
-        statusEl.textContent = "❌ Error: " + error.message;
-      }
+      });
+      statusEl.textContent = `✅ Order sent! ID: ${docRef.id}`;
+    } catch (err) {
+      console.error(err);
+      statusEl.textContent = "❌ Error sending order";
     }
+  }
 
-    // Make available globally for button
-    window.sendTestOrder = sendTestOrder;
-  </script>
+  // Print order (using Epson ePOS SDK on desktop / LAN)
+  function printOrder() {
+    const printerIp = "192.168.0.111"; // Change to your printer IP
+    const ePosDev = new epson.ePOSDevice();
+
+    ePosDev.connect(printerIp, 8008, function(res) {
+      if (res === "OK" || res === "SSL_CONNECT_OK") {
+        ePosDev.createDevice('local_printer', ePosDev.DEVICE_TYPE_PRINTER, { crypto:false, buffer:false }, function(printerObj, code){
+          if(!printerObj){
+            alert("Printer connection failed: " + code);
+            return;
+          }
+
+          const printer = printerObj;
+          printer.addTextAlign(printer.ALIGN_CENTER);
+          printer.addText("*** ORDER RECEIPT ***\n\n");
+          printer.addTextAlign(printer.ALIGN_LEFT);
+
+          orderItems.forEach(item => {
+            printer.addText(`${item.name} x${item.qty}  $${item.qty * item.price}\n`);
+          });
+
+          printer.addText("--------------------\n");
+          printer.addTextAlign(printer.ALIGN_RIGHT);
+          printer.addText(`TOTAL: $${totalPrice}\n`);
+          printer.addFeedLine(2);
+          printer.addCut(printer.CUT_FEED);
+          printer.send();
+          statusEl.textContent = "🖨️ Print job sent!";
+        });
+      } else {
+        alert("Connection failed: " + res);
+      }
+    });
+  }
+</script>
+
+<!-- Epson ePOS SDK -->
+<script src="https://download.epson-biz.com/modules/pos/reference/epos-2.31.0.js"></script>
 </body>
 </html>

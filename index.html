@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Restaurant Order / 80mm Print</title>
+<style>
+  /* --------------------
+     GLOBAL & LAYOUT
+  -------------------- */
+  :root {
+    --receipt-width: 80mm; /* 80mm paper width */
+    --accent: #1f8ef1;
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+  }
+  body {
+    display: flex;
+    justify-content: center;
+    padding: 24px;
+    background: #f6f7fb;
+  }
+  .receipt {
+    width: var(--receipt-width);
+    background: #fff;
+    padding: 16px;
+    box-shadow: 0 6px 18px rgba(20,20,40,0.06);
+    border-radius: 6px;
+  }
+
+  /* --------------------
+     TEXT STYLES
+  -------------------- */
+  h1 {
+    font-size: 18px;
+    margin: 6px 0 12px;
+    text-align: center;
+  }
+  .meta {
+    font-size: 12px;
+    color: #444;
+    margin-bottom: 12px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+  th, td {
+    text-align: left;
+    padding: 6px 4px;
+  }
+  th {
+    font-size: 12px;
+    color: #666;
+    border-bottom: 1px dashed #ddd;
+  }
+  .qty-controls {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
+  .qty-controls button {
+    padding: 4px 8px;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+    background: #fff;
+    cursor: pointer;
+  }
+  .price {
+    text-align: right;
+  }
+  .totals {
+    margin-top: 10px;
+    font-size: 15px;
+  }
+  .totals div {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+  }
+  .actions {
+    margin-top: 12px;
+    display: flex;
+    gap: 8px;
+  }
+  button.primary {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  button.ghost {
+    background: #fff;
+    border: 1px solid #ccc;
+    padding: 8px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .small {
+    font-size: 12px;
+    color: #666;
+    margin-top: 6px;
+  }
+  .status {
+    margin-top: 8px;
+    font-size: 12px;
+    color: #333;
+  }
+
+  /* --------------------
+     PRINT STYLES
+  -------------------- */
+  @media print {
+    @page {
+      size: 80mm auto; /* For thermal paper width */
+      margin: 0; /* no extra margins */
+    }
+    body {
+      background: #fff;
+      padding: 0;
+      margin: 0;
+    }
+    .actions, .small, .status {
+      display: none !important;
+    }
+    .receipt {
+      box-shadow: none;
+      border: none;
+      border-radius: 0;
+      width: 80mm;
+      padding: 0;
+      margin: 0;
+    }
+    h1 { font-size: 16px; }
+    th, td { font-size: 12px; }
+  }
+</style>
+</head>
+<body>
+  <div class="receipt" id="receipt">
+    <h1>My Restaurant</h1>
+    <div class="meta">
+      <div>Order #: <strong id="orderNumber">-</strong></div>
+      <div>Date: <strong id="orderDate">-</strong></div>
+    </div>
+
+    <table aria-label="order items">
+      <thead>
+        <tr><th>Item</th><th>Qty</th><th class="price">Price</th></tr>
+      </thead>
+      <tbody id="itemsBody"></tbody>
+    </table>
+
+    <div class="totals">
+      <div><span>Subtotal</span><span id="subtotal" class="price">0.00 €</span></div>
+      <div><span>Tax (10%)</span><span id="tax" class="price">0.00 €</span></div>
+      <div style="font-weight:700; border-top:1px solid #eee; padding-top:8px;">
+        <span>Total</span><span id="total" class="price">0.00 €</span>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="primary" id="printBtn">Print</button>
+      <button class="ghost" id="bluetoothBtn">Send to Bluetooth (experimental)</button>
+    </div>
+
+    <div class="small">Tip: Pair your Bluetooth printer in OS settings so it appears as a system printer. Then use Print to send to it.</div>
+    <div class="status" id="status"></div>
+  </div>
+
+<script>
+(function(){
+  // Sample items (name, unit price)
+  const items = [
+    { id: 'burger', name: 'Cheeseburger', price: 7.50, qty: 2 },
+    { id: 'fries', name: 'Fries', price: 3.00, qty: 1 },
+    { id: 'cola', name: 'Cola (0.33l)', price: 2.30, qty: 3 }
+  ];
+
+  const TAX_RATE = 0.10;
+  const tz = 'Europe/Helsinki';
+
+  function fmt(v){ return v.toLocaleString('en-GB', { style:'currency', currency:'EUR' }); }
+
+  function createOrderNumber(){
+    const pad = n => String(n).padStart(3,'0');
+    const d = new Date();
+    return 'R' + d.getFullYear().toString().slice(-2) + pad(d.getMonth()+1) + pad(d.getDate()) + '-' + Math.floor(Math.random()*900+100);
+  }
+
+  document.getElementById('orderNumber').textContent = createOrderNumber();
+  document.getElementById('orderDate').textContent = new Date().toLocaleString('en-GB', { timeZone: tz });
+
+  const tbody = document.getElementById('itemsBody');
+  function renderItems(){
+    tbody.innerHTML = '';
+    items.forEach((it) => {
+      const tr = document.createElement('tr');
+
+      const tdName = document.createElement('td');
+      tdName.textContent = it.name;
+      tr.appendChild(tdName);
+
+      const tdQty = document.createElement('td');
+      const qWrap = document.createElement('div');
+      qWrap.className = 'qty-controls';
+      const minus = document.createElement('button');
+      minus.textContent = '-';
+      minus.addEventListener('click', () => { if(it.qty>0) it.qty--; updateAll(); });
+      const plus = document.createElement('button');
+      plus.textContent = '+';
+      plus.addEventListener('click', () => { it.qty++; updateAll(); });
+      const qSpan = document.createElement('span');
+      qSpan.textContent = it.qty;
+      qSpan.style.minWidth = '22px';
+      qSpan.style.display = 'inline-block';
+      qWrap.append(minus, qSpan, plus);
+      tdQty.appendChild(qWrap);
+      tr.appendChild(tdQty);
+
+      const tdPrice = document.createElement('td');
+      tdPrice.className = 'price';
+      tdPrice.textContent = fmt(it.price * it.qty);
+      tr.appendChild(tdPrice);
+      tbody.appendChild(tr);
+      it._row = { qSpan, tdPrice };
+    });
+  }
+
+  function updateAll(){
+    let subtotal = 0;
+    items.forEach(it => {
+      if(it._row){
+        it._row.qSpan.textContent = it.qty;
+        it._row.tdPrice.textContent = fmt(it.price * it.qty);
+      }
+      subtotal += it.price * it.qty;
+    });
+    const tax = subtotal * TAX_RATE;
+    const total = subtotal + tax;
+    document.getElementById('subtotal').textContent = fmt(subtotal);
+    document.getElementById('tax').textContent = fmt(tax);
+    document.getElementById('total').textContent = fmt(total);
+  }
+
+  renderItems();
+  updateAll();
+
+  document.getElementById('printBtn').addEventListener('click', () => {
+    const oldTitle = document.title;
+    document.title = 'Order-' + document.getElementById('orderNumber').textContent;
+    window.print();
+    document.title = oldTitle;
+  });
+
+  // Optional Bluetooth printing (experimental)
+  document.getElementById('bluetoothBtn').addEventListener('click', async () => {
+    const status = document.getElementById('status');
+    status.textContent = '';
+    if (!navigator.bluetooth) {
+      status.textContent = 'Web Bluetooth not available.';
+      return;
+    }
+    try {
+      status.textContent = 'Requesting device...';
+      const device = await navigator.bluetooth.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: ['000018f0-0000-1000-8000-00805f9b34fb']
+      });
+      status.textContent = 'Connecting...';
+      const server = await device.gatt.connect();
+      const service = await server.getPrimaryService('000018f0-0000-1000-8000-00805f9b34fb');
+      const char = await service.getCharacteristic('00002af1-0000-1000-8000-00805f9b34fb');
+      const encoder = new TextEncoder();
+      const receiptText = buildPlainReceiptText();
+      const data = encoder.encode(receiptText + '\n\n\n');
+      await char.writeValue(data);
+      status.textContent = 'Sent to printer.';
+      server.disconnect();
+    } catch (err) {
+      status.textContent = 'Bluetooth print failed: ' + err.message;
+    }
+  });
+
+  function buildPlainReceiptText(){
+    let lines = [];
+    lines.push('*** My Restaurant ***');
+    lines.push('Order #: ' + document.getElementById('orderNumber').textContent);
+    lines.push('Date: ' + document.getElementById('orderDate').textContent);
+    lines.push('-------------------------------');
+    items.forEach(it => {
+      if (it.qty > 0) {
+        lines.push(`${it.name} x${it.qty} \t ${(it.price * it.qty).toFixed(2)} €`);
+      }
+    });
+    lines.push('-------------------------------');
+    lines.push('Subtotal: ' + document.getElementById('subtotal').textContent);
+    lines.push('Tax: ' + document.getElementById('tax').textContent);
+    lines.push('Total: ' + document.getElementById('total').textContent);
+    lines.push('');
+    lines.push('Thank you!');
+    return lines.join('\n');
+  }
+
+})();
+</script>
+</body>
+</html>
